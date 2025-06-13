@@ -8,8 +8,7 @@ An AI-powered web application that helps users discover and create recipes based
 - **Cuisine Preferences**: Choose from Italian, Asian, Mexican, Mediterranean, American, and Indian styles
 - **AI Chat Assistant**: Ask cooking questions, get substitution suggestions, and receive cooking tips
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
-- ![Screenshot (138)](https://github.com/user-attachments/assets/5c66e0c4-bd78-457d-9b43-9c4f6fda9ecf)
-
+![Screenshot (138)](https://github.com/user-attachments/assets/5c66e0c4-bd78-457d-9b43-9c4f6fda9ecf)
 
 ## How It Works
 
