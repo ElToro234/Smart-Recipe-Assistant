@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
-const RecipeAssistant = () => {
+const RecipeAssistant = ({ session }) => {
   const [ingredients, setIngredients] = useState('');
   const [dietary, setDietary] = useState('');
   const [cuisine, setCuisine] = useState('');
@@ -8,6 +9,9 @@ const RecipeAssistant = () => {
   const [currentRecipe, setCurrentRecipe] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
+  const [savedRecipes, setSavedRecipes] = useState([]);
+  const [showSavedRecipes, setShowSavedRecipes] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState(false);
   const chatMessagesRef = useRef(null);
   
   // Get API key from environment variable
@@ -25,6 +29,96 @@ const RecipeAssistant = () => {
       console.error('OpenAI API key is not configured. Please add it to your .env file.');
     }
   }, [apiKey]);
+
+  useEffect(() => {
+    // Load saved recipes when component mounts
+    fetchSavedRecipes();
+  }, []);
+
+  const fetchSavedRecipes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('recipes')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSavedRecipes(data || []);
+    } catch (error) {
+      console.error('Error fetching saved recipes:', error);
+    }
+  };
+
+  const saveRecipe = async () => {
+    if (!currentRecipe) return;
+    
+    setSavingRecipe(true);
+    try {
+      const { error } = await supabase
+        .from('recipes')
+        .insert([
+          {
+            user_id: session.user.id,
+            title: currentRecipe.title,
+            ingredients: currentRecipe.ingredients,
+            instructions: currentRecipe.instructions,
+            prep_time: currentRecipe.prepTime,
+            cook_time: currentRecipe.cookTime,
+            servings: currentRecipe.servings,
+            dietary_preference: dietary,
+            cuisine_style: cuisine
+          }
+        ]);
+
+      if (error) throw error;
+      
+      alert('Recipe saved successfully!');
+      fetchSavedRecipes(); // Refresh the saved recipes list
+    } catch (error) {
+      console.error('Error saving recipe:', error);
+      alert('Error saving recipe. Please try again.');
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
+
+  const deleteRecipe = async (recipeId) => {
+    if (!window.confirm('Are you sure you want to delete this recipe?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('recipes')
+        .delete()
+        .eq('id', recipeId)
+        .eq('user_id', session.user.id);
+
+      if (error) throw error;
+      
+      fetchSavedRecipes(); // Refresh the saved recipes list
+    } catch (error) {
+      console.error('Error deleting recipe:', error);
+      alert('Error deleting recipe. Please try again.');
+    }
+  };
+
+  const loadRecipe = (recipe) => {
+    setCurrentRecipe({
+      title: recipe.title,
+      ingredients: recipe.ingredients,
+      instructions: recipe.instructions,
+      prepTime: recipe.prep_time,
+      cookTime: recipe.cook_time,
+      servings: recipe.servings
+    });
+    setDietary(recipe.dietary_preference || '');
+    setCuisine(recipe.cuisine_style || '');
+    setShowSavedRecipes(false);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
 
   const callOpenAI = async (prompt, isRecipe = false) => {
     if (!apiKey || apiKey === 'your_openai_api_key_here') {
@@ -158,6 +252,9 @@ const RecipeAssistant = () => {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-4">
               🍳 Smart Recipe Assistant
             </h1>
+            <p className="text-sm text-gray-600 mb-4">
+              Logged in as: {session.user.email}
+            </p>
             <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg">
               <p className="font-semibold mb-2">Configuration Required</p>
               <p className="text-sm">Please add your OpenAI API key to the .env file:</p>
@@ -166,6 +263,12 @@ const RecipeAssistant = () => {
               </code>
               <p className="text-xs mt-2">Then restart your development server.</p>
             </div>
+            <button
+              onClick={handleSignOut}
+              className="mt-4 text-purple-600 hover:text-purple-700 font-medium"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       </div>
@@ -183,7 +286,67 @@ const RecipeAssistant = () => {
           <p className="text-gray-600 text-lg">
             Turn your ingredients into delicious meals with AI-powered recipe suggestions
           </p>
+          <div className="mt-4 flex items-center justify-center gap-4">
+            <span className="text-sm text-gray-600">
+              Welcome, {session.user.email}
+            </span>
+            <button
+              onClick={handleSignOut}
+              className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
+
+        {/* Saved Recipes Button */}
+        <div className="mb-6 flex justify-center">
+          <button
+            onClick={() => setShowSavedRecipes(!showSavedRecipes)}
+            className="bg-white text-purple-600 border-2 border-purple-600 px-6 py-2 rounded-xl font-semibold hover:bg-purple-50 transition-all duration-300"
+          >
+            {showSavedRecipes ? 'Hide' : 'Show'} Saved Recipes ({savedRecipes.length})
+          </button>
+        </div>
+
+        {/* Saved Recipes List */}
+        {showSavedRecipes && (
+          <div className="mb-8 bg-gray-50 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">📚 Your Saved Recipes</h3>
+            {savedRecipes.length === 0 ? (
+              <p className="text-gray-600 text-center py-4">No saved recipes yet. Generate and save your first recipe!</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {savedRecipes.map((recipe) => (
+                  <div key={recipe.id} className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-center">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-800">{recipe.title}</h4>
+                      <p className="text-sm text-gray-600">
+                        {recipe.dietary_preference && `${recipe.dietary_preference} • `}
+                        {recipe.cuisine_style && `${recipe.cuisine_style} • `}
+                        Saved {new Date(recipe.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => loadRecipe(recipe)}
+                        className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition-colors"
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={() => deleteRecipe(recipe.id)}
+                        className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Input Section */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -264,9 +427,18 @@ const RecipeAssistant = () => {
         {/* Recipe Output */}
         {currentRecipe && !loading && (
           <div className="bg-gray-50 rounded-2xl p-6 mb-8 border-l-4 border-purple-500 animate-fade-in">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">
-              {currentRecipe.title}
-            </h2>
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold text-gray-800">
+                {currentRecipe.title}
+              </h2>
+              <button
+                onClick={saveRecipe}
+                disabled={savingRecipe}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {savingRecipe ? 'Saving...' : '💾 Save Recipe'}
+              </button>
+            </div>
             
             <div className="grid md:grid-cols-2 gap-6">
               <div>
@@ -301,16 +473,6 @@ const RecipeAssistant = () => {
               {currentRecipe.prepTime && currentRecipe.prepTime !== 'N/A' && (
                 <div className="bg-white px-4 py-2 rounded-full">
                   <strong>Prep:</strong> {currentRecipe.prepTime}
-                </div>
-              )}
-              {currentRecipe.cookTime && currentRecipe.cookTime !== 'N/A' && (
-                <div className="bg-white px-4 py-2 rounded-full">
-                  <strong>Cook:</strong> {currentRecipe.cookTime}
-                </div>
-              )}
-              {currentRecipe.servings && currentRecipe.servings !== 'N/A' && (
-                <div className="bg-white px-4 py-2 rounded-full">
-                  <strong>Serves:</strong> {currentRecipe.servings}
                 </div>
               )}
             </div>
@@ -369,3 +531,13 @@ const RecipeAssistant = () => {
 };
 
 export default RecipeAssistant;
+              {currentRecipe.cookTime && currentRecipe.cookTime !== 'N/A' && (
+                <div className="bg-white px-4 py-2 rounded-full">
+                  <strong>Cook:</strong> {currentRecipe.cookTime}
+                </div>
+              )}
+              {currentRecipe.servings && currentRecipe.servings !== 'N/A' && (
+                <div className="bg-white px-4 py-2 rounded-full">
+                  <strong>Serves:</strong> {currentRecipe.servings}
+                </div>
+              )}
